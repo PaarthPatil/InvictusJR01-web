@@ -9,12 +9,16 @@ const analyticsService = {
     return localDb.getTopConsumed();
   },
 
-  async getConsumptionHistory() {
-    return localDb.getConsumptionHistory();
-  },
-
   async getLowStockList() {
     return localDb.getLowStockComponents();
+  },
+
+  async getConsumptionTrends(limit = 10) {
+    return localDb.getConsumptionTrends(limit);
+  },
+
+  async getLowStockTimeline(limit = 10) {
+    return localDb.getLowStockTimeline(limit);
   },
 };
 

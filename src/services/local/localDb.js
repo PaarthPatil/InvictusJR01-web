@@ -532,6 +532,116 @@ function resetDbFromSeed() {
   return db;
 }
 
+function getConsumptionTrends(limit = 10) {
+  const db = getDb();
+
+  // Get recent production entries, grouped by date
+  const productions = db.productionEntries
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, limit);
+
+  if (productions.length === 0) {
+    return [];
+  }
+
+  // Group by date and aggregate consumption
+  const grouped = {};
+  productions.forEach((entry) => {
+    const date = new Date(entry.createdAt).toLocaleDateString();
+    if (!grouped[date]) {
+      grouped[date] = {
+        date,
+        consumed: 0,
+        produced: 0,
+      };
+    }
+    grouped[date].produced += entry.quantity;
+    // Sum all component consumption for this production
+    entry.bomSnapshot.forEach((bom) => {
+      grouped[date].consumed += bom.requiredQty * entry.quantity;
+    });
+  });
+
+  // Convert to array and sort by date
+  return Object.values(grouped)
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    .map((item) => deepClone(item));
+}
+
+function getLowStockTimeline(limit = 10) {
+  const db = getDb();
+
+  // Get procurement triggers over time, grouped by date
+  const triggers = db.procurementTriggers
+    .sort((a, b) => new Date(b.triggeredAt).getTime() - new Date(a.triggeredAt).getTime())
+    .slice(0, limit * 2); // Get more to have better history
+
+  if (triggers.length === 0) {
+    return [];
+  }
+
+  // Group by date and count low stock items
+  const grouped = {};
+  triggers.forEach((trigger) => {
+    const date = new Date(trigger.triggeredAt).toLocaleDateString();
+    if (!grouped[date]) {
+      grouped[date] = {
+        date,
+        lowStock: 0,
+        items: new Set(),
+      };
+    }
+    // Use Set to avoid counting same component multiple times per day
+    grouped[date].items.add(trigger.componentId);
+  });
+
+  // Convert Set size to lowStock count
+  Object.values(grouped).forEach((item) => {
+    item.lowStock = item.items.size;
+    delete item.items;
+  });
+
+  // Convert to array and sort by date
+  return Object.values(grouped)
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    .slice(-limit) // Take last N days
+    .map((item) => deepClone(item));
+}
+
+function getProcurementInvoiceData() {
+  const db = getDb();
+  const pendingTriggers = db.procurementTriggers
+    .filter((trigger) => trigger.status === "pending")
+    .sort((a, b) => new Date(a.triggeredAt).getTime() - new Date(b.triggeredAt).getTime());
+
+  return deepClone(pendingTriggers);
+}
+
+function markProcurementFulfilled(triggerId, fulfillmentNotes = "", userEmail = "admin@local.test") {
+  const db = getDb();
+  const trigger = db.procurementTriggers.find((t) => t.id === triggerId);
+
+  if (!trigger) {
+    throw new Error(`Procurement trigger with ID ${triggerId} not found.`);
+  }
+
+  if (trigger.status !== "pending") {
+    throw new Error(`Procurement trigger is already ${trigger.status}.`);
+  }
+
+  // Update trigger with fulfillment information
+  trigger.status = "fulfilled";
+  trigger.fulfilledAt = new Date().toISOString();
+  trigger.fulfilledBy = userEmail;
+  trigger.fulfilledMethod = "manual";
+  trigger.fulfillmentNotes = fulfillmentNotes;
+
+  saveDb(db);
+  emitDataChange("procurement_fulfilled", { triggerId });
+
+  return deepClone(trigger);
+}
+
 export const localDb = {
   listComponents,
   getComponentById,
@@ -545,10 +655,14 @@ export const localDb = {
   listProcurementTriggers,
   getDashboardSummary,
   getTopConsumed,
-  getConsumptionHistory,
   getLowStockComponents,
   importExcel,
   exportInventory,
   exportConsumption,
   resetDbFromSeed,
+  getProcurementInvoiceData,
+  markProcurementFulfilled,
+  getConsumptionTrends,
+  getLowStockTimeline,
 };
+

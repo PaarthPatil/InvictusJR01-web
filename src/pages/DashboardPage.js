@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useState } from "react";
 import LoadingState from "../components/common/LoadingState";
 import StatusMessage from "../components/common/StatusMessage";
+import InvoiceModal from "../components/common/InvoiceModal";
+import FulfillmentModal from "../components/common/FulfillmentModal";
 import services from "../services";
 import { onDataChange } from "../utils/dataEvents";
 import { formatDateTime, formatNumber } from "../utils/formatters";
@@ -11,6 +13,12 @@ function DashboardPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [invoiceModalOpen, setInvoiceModalOpen] = useState(false);
+  const [invoiceHtml, setInvoiceHtml] = useState("");
+  const [invoiceItemCount, setInvoiceItemCount] = useState(0);
+  const [generatingInvoice, setGeneratingInvoice] = useState(false);
+  const [fulfillmentModalOpen, setFulfillmentModalOpen] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null);
 
   const loadData = useCallback(async (filter = "all") => {
     setLoading(true);
@@ -47,6 +55,35 @@ function DashboardPage() {
     loadData(nextFilter);
   };
 
+  const handleGenerateInvoice = async () => {
+    setError("");
+    setGeneratingInvoice(true);
+
+    try {
+      const result = await services.invoiceService.generateInvoice();
+      setInvoiceHtml(result.html);
+      setInvoiceItemCount(result.itemCount);
+      setInvoiceModalOpen(true);
+    } catch (err) {
+      setError(err?.response?.data?.message || err.message || "Failed to generate invoice.");
+    } finally {
+      setGeneratingInvoice(false);
+    }
+  };
+
+  const handleMarkFulfilled = (item) => {
+    setSelectedItem(item);
+    setFulfillmentModalOpen(true);
+  };
+
+  const handleFulfill = async (triggerId, notes) => {
+    await services.procurementService.markFulfilled(triggerId, notes);
+    loadData(statusFilter);
+  };
+
+  const pendingCount = summary?.pendingProcurementCount || 0;
+  const canGenerateInvoice = pendingCount > 0;
+
   return (
     <div className="page">
       <h1>Dashboard</h1>
@@ -76,7 +113,17 @@ function DashboardPage() {
       ) : null}
 
       <section className="card">
-        <h2>Procurement Trigger Records</h2>
+        <div className="section-header">
+          <h2>Procurement Trigger Records</h2>
+          <button
+            className="btn"
+            onClick={handleGenerateInvoice}
+            disabled={!canGenerateInvoice || generatingInvoice}
+            title={!canGenerateInvoice ? "No pending procurement items" : "Generate invoice for pending items"}
+          >
+            {generatingInvoice ? "Generating..." : `📄 Generate Invoice (${pendingCount})`}
+          </button>
+        </div>
         <div className="filter-chip-row">
           {[
             { value: "all", label: "All" },
@@ -105,12 +152,13 @@ function DashboardPage() {
                 <th>Triggered At</th>
                 <th>Status</th>
                 <th>Resolved At</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {procurementRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={8}>No procurement records found.</td>
+                  <td colSpan={9}>No procurement records found.</td>
                 </tr>
               ) : (
                 procurementRecords.map((record) => (
@@ -123,14 +171,28 @@ function DashboardPage() {
                     <td>{formatDateTime(record.triggeredAt)}</td>
                     <td>
                       <span
-                        className={`badge ${
-                          record.status === "pending" ? "badge-danger" : "badge-success"
-                        }`}
+                        className={`badge ${record.status === "pending" ? "badge-danger" : "badge-success"}`}
                       >
                         {record.status}
                       </span>
                     </td>
-                    <td>{record.resolvedAt ? formatDateTime(record.resolvedAt) : "-"}</td>
+                    <td>
+                      {record.resolvedAt ? formatDateTime(record.resolvedAt) : "-"}
+                    </td>
+                    <td>
+                      {record.status === "pending" && (
+                        <button
+                          className="action-btn"
+                          onClick={() => handleMarkFulfilled(record)}
+                          title="Mark this procurement as fulfilled"
+                        >
+                          ✓ Mark Fulfilled
+                        </button>
+                      )}
+                      {record.status === "fulfilled" && record.fulfillmentNotes && (
+                        <small title={record.fulfillmentNotes}>📝 Has notes</small>
+                      )}
+                    </td>
                   </tr>
                 ))
               )}
@@ -138,7 +200,21 @@ function DashboardPage() {
           </table>
         </div>
       </section>
-    </div>
+
+      <InvoiceModal
+        isOpen={invoiceModalOpen}
+        onClose={() => setInvoiceModalOpen(false)}
+        invoiceHtml={invoiceHtml}
+        itemCount={invoiceItemCount}
+      />
+
+      <FulfillmentModal
+        isOpen={fulfillmentModalOpen}
+        onClose={() => setFulfillmentModalOpen(false)}
+        item={selectedItem}
+        onFulfill={handleFulfill}
+      />
+    </div >
   );
 }
 

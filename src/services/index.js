@@ -7,6 +7,7 @@ import apiProductionService from "./api/productionService";
 import apiAnalyticsService from "./api/analyticsService";
 import apiProcurementService from "./api/procurementService";
 import apiImportExportService from "./api/importExportService";
+import apiInvoiceService from "./api/invoiceService";
 
 import localAuthService from "./local/authService";
 import localComponentsService from "./local/componentsService";
@@ -15,6 +16,7 @@ import localProductionService from "./local/productionService";
 import localAnalyticsService from "./local/analyticsService";
 import localProcurementService from "./local/procurementService";
 import localImportExportService from "./local/importExportService";
+import localInvoiceService from "./local/invoiceService";
 
 const isApiMode = DATA_MODE === "api";
 
@@ -27,6 +29,7 @@ const services = {
   analyticsService: isApiMode ? apiAnalyticsService : localAnalyticsService,
   procurementService: isApiMode ? apiProcurementService : localProcurementService,
   importExportService: isApiMode ? apiImportExportService : localImportExportService,
+  invoiceService: isApiMode ? apiInvoiceService : localInvoiceService,
 };
 
 export default services;
